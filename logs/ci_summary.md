@@ -1,12 +1,12 @@
 # Artifact CI summary
 
-UTC timestamp: 2026-06-08T13:45:59Z
+UTC timestamp: 2026-06-08T15:19:11Z
 
 ## Commands run
 
 ```bash
 bash scripts/reviewer_quickstart.sh
-lake build  # only if lake is available
+lake build
 ```
 
 ## Generated outputs

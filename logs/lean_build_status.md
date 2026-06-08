@@ -1,6 +1,11 @@
 # Lean build status
 
-UTC timestamp: 2026-06-08T13:45:58Z
+UTC timestamp: 2026-06-08T15:19:11Z
 
-lake not found on this runner. The current workflow verifies reviewer scripts and toy reproducibility only.
-Use the Dockerfile or install Lean with elan to run lake build.
+lean version: Lean (version 4.12.0, x86_64-unknown-linux-gnu, commit dc2533473114, Release)
+lake version: Lake version 5.0.0-dc25334 (Lean version 4.12.0)
+
+Running lake build...
+Build completed successfully.
+
+lake build completed successfully
