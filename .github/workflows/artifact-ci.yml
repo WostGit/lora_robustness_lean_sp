@@ -1,4 +1,4 @@
-name: Artifact CI
+name: Self-contained IEEE SP Artifact CI
 
 on:
   push:
@@ -9,8 +9,12 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: artifact-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  reviewer-check:
+  build-test-and-commit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,80 +22,651 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Lean and Lake
+      - name: Generate self-contained artifact files from this YAML
+        shell: bash
         run: |
           set -euo pipefail
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain none
+          mkdir -p LoRARobustness reproducibility logs artifact_eval notes scripts
+
+          cat > README.md <<'EOF'
+          # LoRA Robustness Lean/SP Artifact
+
+          This repository is generated and tested by a single self-contained GitHub Actions workflow:
+
+          `.github/workflows/artifact-ci.yml`
+
+          The workflow writes the Lean specification, beginner documentation, deterministic toy reproduction code, logs, and scorecards, then commits generated outputs back to `main` after successful non-PR runs.
+
+          ## One command for local reviewers
+
+          ```bash
+          bash scripts/reviewer_quickstart.sh
+          ```
+
+          ## Honest scope
+
+          This artifact provides:
+
+          - Lean-checked toy examples.
+          - A Lean specification of the LoRA robustness formulas.
+          - Explicit labels for assumptions and unproved theorem interfaces.
+          - A deterministic toy LoRA/privacy/poisoning simulation.
+          - CI-generated logs committed back to the repository.
+
+          This artifact does not claim to fully reproduce BERT/GLUE experiments or prove the ICML paper's NTK/Fisher claims from first principles.
+          EOF
+
+          cat > README_BEGINNER.md <<'EOF'
+          # Beginner guide
+
+          This artifact is designed so a reviewer who knows nothing about proofs can still understand what is checked.
+
+          ## What Lean proves here
+
+          Lean fully checks the tiny examples in `LoRARobustness/ToyExample.lean`.
+
+          ## What Lean specifies here
+
+          `LoRARobustness/FormulaBook.lean` records formulas and claim shapes. Some central scientific claims are written as `axiom`, which means assumed, not proved.
+
+          ## What CI reproduces
+
+          CI regenerates `logs/toy_lora_privacy_results.csv` and summary files. This is a deterministic toy reproduction, not a full BERT/GLUE run.
+
+          ## Reviewer rule
+
+          Treat definitions as formal encodings, toy theorems as checked examples, and axioms as open proof obligations.
+          EOF
+
+          cat > WHAT_LEAN_CHECKS.md <<'EOF'
+          # What Lean checks
+
+          | Lean word | Meaning for non-proof readers |
+          |---|---|
+          | `def` | A named definition. Lean checks syntax and type correctness. |
+          | `opaque` | A placeholder with no implementation in this artifact. |
+          | `axiom` | An assumption accepted without proof. |
+          | `theorem ... := by rfl` | A small theorem Lean proves by computation/unfolding. |
+          | `lake build` | Compiles the Lean package and verifies all checked proofs. |
+
+          This artifact runs `lake build` in CI by installing Lean with elan.
+          EOF
+
+          cat > PROOF_STATUS_TABLE.md <<'EOF'
+          # Proof status table
+
+          | Item | Status | Trust level |
+          |---|---|---|
+          | `ToyExample.lean` | Checked toy Lean proofs | High for toy facts |
+          | Formula definitions | Lean definitions | Medium: shape checked, semantics abstract |
+          | NTK/Fisher bridge | Axiom | Low: assumed |
+          | LoRA/full NTK relation | Axiom/interface | Low: assumed |
+          | DP/privacy interactions | Typed qualitative records | Hypothesis map |
+          | Toy Python simulation | Deterministic executable workflow | High for toy reproducibility |
+          | Full BERT/GLUE reproduction | Not included | Open obligation |
+          EOF
+
+          cat > CLAIMS_LEDGER.md <<'EOF'
+          # Claims ledger
+
+          | Claim | Evidence in repo | Status |
+          |---|---|---|
+          | LoRA update has form `Delta W = B A` | Lean definition plus toy proof | Encoded and toy checked |
+          | TTR compares clean and perturbed parameter updates | Lean definition | Specification |
+          | NTK/Fisher bridge explains robustness geometry | Axiom | Not proved here |
+          | LoRA helps backdoor robustness | Paper-derived claim | Not reproduced here |
+          | LoRA worsens untargeted poisoning robustness | Paper-derived claim | Not reproduced here |
+          | DP/PAC-style mechanisms interact with LoRA robustness | Typed hypothesis records | Not proved here |
+          | Toy results regenerate exactly | CI and local scripts | Executable toy evidence |
+          EOF
+
+          cat > FORMULA_WALKTHROUGH.md <<'EOF'
+          # Formula walkthrough
+
+          | Formula | Lean name | Plain meaning | Status |
+          |---|---|---|---|
+          | (1) | `empiricalRisk` | Sum of training losses | Definition |
+          | (2) | `layerPreactivation`, `layerActivation` | Linear layer and activation | Definition |
+          | (3) | `loraDeltaW` | LoRA update `B A` | Definition plus toy example |
+          | (4) | `loraIntermediate` | Adapter intermediate `A x` | Definition |
+          | (5) | `trainingTimeRobustnessMetric` | Expected norm of clean-vs-poisoned update difference | Definition |
+          | (6) | `ntkFormula` | Neural tangent kernel placeholder | Opaque |
+          | (7) | `simplifiedTTRProxy` | NTK proxy for TTR | Definition |
+          | (8) | `fisher_weighted_ntk_bridge` | Fisher/NTK bridge | Axiom |
+          | (9) | `informationBitsLogDet` | Information bits | Definition |
+          | (10) | `renyiEntropy` | Renyi entropy | Definition |
+          | (11)-(14) | covariance and NTK definitions | GP/full/LoRA NTK shapes | Definitions/opaque placeholders |
+          | (15) | `oold_ntk_relationship` | LoRA NTK equals full NTK plus residual | Axiom |
+          | (16) | `backdoorGradientObjective` | Backdoor gradient objective | Definition |
+          | (17) | `untargetedPoisoningGradientObjective` | UPA gradient objective | Definition |
+          | (18) | `approximateRenyiFromLoRAGram` | Entropy proxy from `A^T A` | Definition |
+          EOF
+
+          cat > REPRODUCIBILITY_SCORECARD.md <<'EOF'
+          # Reproducibility scorecard
+
+          The single YAML workflow provides:
+
+          - File generation from one self-contained CI source.
+          - Lean installation with elan.
+          - `lake build` execution.
+          - Deterministic toy results with fixed seed.
+          - CI summaries committed back to `main` after successful non-PR runs.
+
+          Remaining work for a literal full-paper 10/10 artifact:
+
+          - Full BERT/GLUE UPA/BPA experiments.
+          - Rank and initialization sweeps on real models.
+          - DP-SGD and PACZero-style experiments on real tasks.
+          - Raw logs, seeds, plots, and confidence intervals for all paper-level claims.
+          EOF
+
+          cat > ARTIFACT_MANIFEST.md <<'EOF'
+          # Artifact manifest
+
+          Generated by `.github/workflows/artifact-ci.yml`.
+
+          ## Core files
+
+          - `LoRARobustness.lean`
+          - `LoRARobustness/FormulaBook.lean`
+          - `LoRARobustness/PrivacyInteractions.lean`
+          - `LoRARobustness/ToyExample.lean`
+          - `reproducibility/toy_lora_privacy_sim.py`
+          - `scripts/reviewer_quickstart.sh`
+          - `logs/toy_lora_privacy_results.csv`
+          - `logs/ci_summary.md`
+          - `logs/lean_build_status.md`
+          EOF
+
+          cat > lean-toolchain <<'EOF'
+          leanprover/lean4:v4.12.0
+          EOF
+
+          cat > lakefile.lean <<'EOF'
+          import Lake
+          open Lake DSL
+
+          package «lora_robustness_lean_sp» where
+            version := v!"0.5.0"
+
+          lean_lib LoRARobustness where
+            roots := #[`LoRARobustness]
+          EOF
+
+          cat > LoRARobustness.lean <<'EOF'
+          import LoRARobustness.FormulaBook
+          import LoRARobustness.PrivacyInteractions
+          import LoRARobustness.ToyExample
+          EOF
+
+          cat > LoRARobustness/ToyExample.lean <<'EOF'
+          namespace LoRARobustness.ToyExample
+
+          structure Mat2 where
+            a00 : Nat
+            a01 : Nat
+            a10 : Nat
+            a11 : Nat
+            deriving Repr, DecidableEq
+
+          structure Rank1Adapter where
+            b0 : Nat
+            b1 : Nat
+            a0 : Nat
+            a1 : Nat
+            deriving Repr, DecidableEq
+
+          def deltaW (ad : Rank1Adapter) : Mat2 :=
+            { a00 := ad.b0 * ad.a0
+              a01 := ad.b0 * ad.a1
+              a10 := ad.b1 * ad.a0
+              a11 := ad.b1 * ad.a1 }
+
+          def exampleAdapter : Rank1Adapter :=
+            { b0 := 2, b1 := 3, a0 := 5, a1 := 7 }
+
+          def exampleDelta : Mat2 := deltaW exampleAdapter
+
+          theorem exampleDelta_is_expected :
+              exampleDelta = { a00 := 10, a01 := 14, a10 := 15, a11 := 21 } := by
+            rfl
+
+          end LoRARobustness.ToyExample
+          EOF
+
+          cat > LoRARobustness/FormulaBook.lean <<'EOF'
+          namespace LoRARobustness
+
+          opaque Scalar : Type
+          opaque Params : Type
+          opaque Sample : Type
+          opaque Label : Type
+          opaque Time : Type
+          opaque Dataset : Type
+          opaque Distribution : Type -> Type
+
+          abbrev Vec (n : Nat) := Fin n -> Scalar
+          abbrev Matrix (m n : Nat) := Fin m -> Fin n -> Scalar
+
+          opaque zero : Scalar
+          opaque one : Scalar
+          opaque add : Scalar -> Scalar -> Scalar
+          opaque sub : Scalar -> Scalar -> Scalar
+          opaque mul : Scalar -> Scalar -> Scalar
+          opaque div : Scalar -> Scalar -> Scalar
+          opaque log : Scalar -> Scalar
+          opaque abs : Scalar -> Scalar
+
+          infixl:65 " +s " => add
+          infixl:65 " -s " => sub
+          infixl:70 " *s " => mul
+          infixl:70 " /s " => div
+
+          opaque finiteSum {a : Type} : (a -> Scalar) -> Scalar
+          opaque expectation {a : Type} : Distribution a -> (a -> Scalar) -> Scalar
+          opaque timeDistribution : Distribution Time
+          opaque cleanPerturbedPairs : Dataset -> Dataset -> Distribution (Sample × Sample)
+          opaque F : Params -> Sample -> Scalar
+          opaque loss : Scalar -> Label -> Scalar
+          opaque paramUpdate : Dataset -> Time -> Params
+          opaque paramSub : Params -> Params -> Params
+          opaque paramNorm : Params -> Scalar
+          opaque outputLossGrad : Sample -> Params -> Scalar
+
+          opaque matVec {m n : Nat} : Matrix m n -> Vec n -> Vec m
+          opaque matMul {m n p : Nat} : Matrix m n -> Matrix n p -> Matrix m p
+          opaque transpose {m n : Nat} : Matrix m n -> Matrix n m
+          opaque eye (n : Nat) : Matrix n n
+          opaque matSub {m n : Nat} : Matrix m n -> Matrix m n -> Matrix m n
+          opaque matAdd {m n : Nat} : Matrix m n -> Matrix m n -> Matrix m n
+          opaque vecInner {n : Nat} : Vec n -> Vec n -> Scalar
+          opaque affine {m n : Nat} : Matrix m n -> Vec n -> Vec m -> Vec m
+          opaque mapSigma {n : Nat} : Vec n -> Vec n
+          opaque eigenvalues {n : Nat} : Matrix n n -> List Scalar
+          opaque pseudoDet {n : Nat} : Matrix n n -> Scalar
+          opaque sumScalars : List Scalar -> Scalar
+          opaque sumPowers : List Scalar -> Scalar -> Scalar
+          opaque filterPositive : List Scalar -> List Scalar
+
+          opaque Kernel : Type
+          opaque ntk : Sample -> Sample -> Kernel
+          opaque kernelAdd : Kernel -> Kernel -> Kernel
+          opaque scalarKernel : Scalar -> Kernel
+          opaque kernelNorm : Kernel -> Scalar
+          opaque expectedKernel : Distribution (Sample × Sample) -> ((Sample × Sample) -> Kernel) -> Kernel
+          opaque fullNTK : Nat -> Nat -> Sample -> Sample -> Kernel
+          opaque loraNTK : Nat -> Nat -> Sample -> Sample -> Kernel
+          opaque gpSigma : Nat -> Sample -> Sample -> Scalar
+          opaque gpSigmaDot : Nat -> Sample -> Sample -> Scalar
+          opaque fisherInfo : Dataset -> Matrix 1 1
+          opaque matrixNSD {n : Nat} : Matrix n n -> Prop
+
+          def empiricalRisk (theta : Params) (Ntr : Nat) (x : Fin Ntr -> Sample) (y : Fin Ntr -> Label) : Scalar :=
+            finiteSum (fun i : Fin Ntr => loss (F theta (x i)) (y i))
+
+          def layerPreactivation {nout nin : Nat} (W : Matrix nout nin) (b : Vec nout) (x : Vec nin) : Vec nout :=
+            affine W x b
+
+          def layerActivation {nout : Nat} (y : Vec nout) : Vec nout := mapSigma y
+
+          def loraDeltaW {nout r nin : Nat} (B : Matrix nout r) (A : Matrix r nin) : Matrix nout nin :=
+            matMul B A
+
+          def loraIntermediate {r nin : Nat} (A : Matrix r nin) (x : Vec nin) : Vec r := matVec A x
+
+          def trainingTimeRobustnessMetric (D Dtilde : Dataset) : Scalar :=
+            expectation (cleanPerturbedPairs D Dtilde) (fun _pair =>
+              expectation timeDistribution (fun t =>
+                paramNorm (paramSub (paramUpdate D t) (paramUpdate Dtilde t))))
+
+          def ntkFormula (x xprime : Sample) : Kernel := ntk x xprime
+
+          def simplifiedTTRProxy (D Dtilde : Dataset) : Scalar :=
+            kernelNorm (expectedKernel (cleanPerturbedPairs D Dtilde) (fun p => ntk p.1 p.2))
+
+          def fisherFromParameterGradients (Dtilde : Dataset) : Matrix 1 1 := fisherInfo Dtilde
+
+          axiom fisher_weighted_ntk_bridge (Dtilde : Dataset) :
+            fisherFromParameterGradients Dtilde = fisherInfo Dtilde
+
+          def informationBitsLogDet {n : Nat} (Itheta : Matrix n n) : Scalar :=
+            (one /s (one +s one)) *s log (pseudoDet Itheta)
+
+          def informationBitsPaperEigenLiteral {n : Nat} (Itheta : Matrix n n) : Scalar :=
+            (one /s (one +s one)) *s sumScalars (filterPositive (eigenvalues Itheta))
+
+          def renyiEntropy {n : Nat} (alpha : Scalar) (Itheta : Matrix n n) : Scalar :=
+            (one /s (one -s alpha)) *s log (sumPowers (eigenvalues Itheta) alpha)
+
+          def gaussianProcessCovariance (l : Nat) (x xprime : Sample) : Scalar := gpSigma l x xprime
+
+          def fullFineTuningNTK (l k : Nat) (x xprime : Sample) : Kernel := fullNTK l k x xprime
+
+          def activationDerivativeCovariance (l : Nat) (x xprime : Sample) : Scalar := gpSigmaDot l x xprime
+
+          def loraNTKFormula (l k : Nat) (x xprime : Sample) : Kernel := loraNTK l k x xprime
+
+          def loraCovarianceTerm {r n : Nat} (A : Matrix r n) (yx yxprime : Vec n) : Scalar :=
+            vecInner yx (matVec (matMul (transpose A) A) yxprime)
+
+          def loraWeight {nout r nin : Nat} (W0 : Matrix nout nin) (B : Matrix nout r) (A : Matrix r nin) : Matrix nout nin :=
+            matAdd W0 (loraDeltaW B A)
+
+          def deltaResidualScalar {r n : Nat} (A : Matrix r n) (yx yxprime : Vec n) : Scalar :=
+            vecInner yx (matVec (matSub (matMul (transpose A) A) (eye n)) yxprime)
+
+          axiom oold_ntk_relationship {r n : Nat} (l k : Nat) (A : Matrix r n) (x xprime : Sample) (yx yxprime : Vec n) :
+            loraNTKFormula l k x xprime = kernelAdd (fullFineTuningNTK l k x xprime) (scalarKernel (deltaResidualScalar A yx yxprime))
+
+          def backdoorGradientObjective (xc xt : Sample) (theta : Params) : Scalar :=
+            abs ((outputLossGrad xc theta) *s (outputLossGrad xt theta))
+
+          def untargetedPoisoningGradientObjective (xc xu : Sample) (theta : Params) : Scalar :=
+            abs ((outputLossGrad xc theta) *s (outputLossGrad xu theta))
+
+          def approximateRenyiFromLoRAGram {r n : Nat} (alpha : Scalar) (A : Matrix r n) : Scalar :=
+            (one /s (one -s alpha)) *s log (sumPowers (eigenvalues (matMul (transpose A) A)) alpha)
+
+          def gramResidual {r n : Nat} (A : Matrix r n) : Matrix n n := matSub (matMul (transpose A) A) (eye n)
+
+          axiom theorem_3_4_gramResidual_NSD {r n : Nat} (A : Matrix r n) (rankCondition : r <= n) (varianceCondition : Prop) :
+            matrixNSD (gramResidual A)
+
+          end LoRARobustness
+          EOF
+
+          cat > LoRARobustness/PrivacyInteractions.lean <<'EOF'
+          import LoRARobustness.FormulaBook
+
+          namespace LoRARobustness
+
+          inductive ThreatKind where
+            | BackdoorPoisoning
+            | UntargetedPoisoning
+            | MembershipInference
+            deriving Repr, DecidableEq
+
+          inductive PrivacyMechanismKind where
+            | DifferentialPrivacy
+            | SignQuantization
+            deriving Repr, DecidableEq
+
+          inductive InteractionDirection where
+            | PositiveSynergy
+            | MixedTradeoff
+            | UnknownNeedsExperiment
+            deriving Repr, DecidableEq
+
+          structure LoRAKnobs where
+            rank : Nat
+            varianceScale : String
+            humanNote : String
+            deriving Repr
+
+          structure PrivacyConfig where
+            mechanism : PrivacyMechanismKind
+            mechanismParameter : String
+            humanNote : String
+            deriving Repr
+
+          structure RobustnessPrivacyInteraction where
+            threat : ThreatKind
+            loraKnobs : LoRAKnobs
+            privacy : PrivacyConfig
+            direction : InteractionDirection
+            mechanismSummary : String
+            expectedBenefit : String
+            expectedRisk : String
+            reviewerCaveat : String
+            deriving Repr
+
+          def defaultLowRankLoRA : LoRAKnobs := {
+            rank := 8,
+            varianceScale := "small default variance",
+            humanNote := "Low rank shrinks the update manifold. This helps backdoor resistance but can increase sensitivity to untargeted poisoning."
+          }
+
+          def dpFineTuning : PrivacyConfig := {
+            mechanism := PrivacyMechanismKind.DifferentialPrivacy,
+            mechanismParameter := "clipping plus additive noise",
+            humanNote := "DP limits the effect of one example or client update."
+          }
+
+          def signQuantizedPrivacy : PrivacyConfig := {
+            mechanism := PrivacyMechanismKind.SignQuantization,
+            mechanismParameter := "subset aggregation plus sign releases",
+            humanNote := "Sign releases reduce update precision and target membership inference resistance."
+          }
+
+          def dpLoraBackdoorSynergy : RobustnessPrivacyInteraction := {
+            threat := ThreatKind.BackdoorPoisoning,
+            loraKnobs := defaultLowRankLoRA,
+            privacy := dpFineTuning,
+            direction := InteractionDirection.PositiveSynergy,
+            mechanismSummary := "LoRA smooths the update space and DP limits individual poisoned-update influence.",
+            expectedBenefit := "Backdoor insertion should become harder in private LoRA fine tuning.",
+            expectedRisk := "Too much noise can reduce clean utility.",
+            reviewerCaveat := "This is a qualitative hypothesis unless backed by experiments."
+          }
+
+          def signLoraPoisoningTradeoff : RobustnessPrivacyInteraction := {
+            threat := ThreatKind.UntargetedPoisoning,
+            loraKnobs := defaultLowRankLoRA,
+            privacy := signQuantizedPrivacy,
+            direction := InteractionDirection.MixedTradeoff,
+            mechanismSummary := "Aggregation can dilute some poisons, but sign flips in low-rank directions may still harm utility.",
+            expectedBenefit := "Aggregation can reduce single-sample influence.",
+            expectedRisk := "Poisoning that changes aggregate signs can exploit the low-rank bottleneck.",
+            reviewerCaveat := "Needs controlled experiments over rank and poison rate."
+          }
+
+          end LoRARobustness
+          EOF
+
+          cat > reproducibility/toy_lora_privacy_sim.py <<'EOF'
+          #!/usr/bin/env python3
+          from __future__ import annotations
+          import argparse, csv, math, os, random
+          from dataclasses import dataclass
+          from typing import Iterable
+
+          @dataclass(frozen=True)
+          class Row:
+              rank: int
+              init_scale: float
+              attack: str
+              mechanism: str
+              utility: float
+              backdoor_asr: float
+              mia_advantage: float
+              note: str
+
+          def clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
+              return max(lo, min(hi, x))
+
+          def toy_metrics(rank: int, init_scale: float, attack: str, mechanism: str, rng: random.Random) -> Row:
+              capacity = math.log2(rank + 1.0) / math.log2(513.0)
+              smoothness = clamp(1.0 - 0.70 * capacity - 0.20 * init_scale)
+              dp = 1.0 if mechanism == 'dp_noise' else 0.0
+              sign = 1.0 if mechanism == 'sign_quantized' else 0.0
+              utility = 0.86 + 0.08 * capacity - 0.03 * init_scale
+              backdoor_asr = 0.0
+              if attack == 'backdoor':
+                  backdoor_asr = 0.65 - 0.45 * smoothness - 0.10 * dp - 0.08 * sign
+                  utility -= 0.02
+                  note = 'toy low rank plus privacy mechanism reduces backdoor ASR'
+              elif attack == 'untargeted_poisoning':
+                  utility -= 0.18 * smoothness + 0.06 * dp + 0.03 * sign
+                  note = 'toy smoother low-rank bottleneck is brittle to UPA'
+              else:
+                  note = 'toy clean setting'
+              mia_advantage = 0.18 + 0.07 * capacity + 0.03 * init_scale - 0.10 * dp - 0.12 * sign
+              utility += rng.uniform(-0.003, 0.003)
+              backdoor_asr += rng.uniform(-0.003, 0.003)
+              mia_advantage += rng.uniform(-0.003, 0.003)
+              return Row(rank, init_scale, attack, mechanism, round(clamp(utility), 4), round(clamp(backdoor_asr), 4), round(clamp(mia_advantage), 4), note)
+
+          def generate(seed: int) -> list[Row]:
+              rng = random.Random(seed)
+              rows: list[Row] = []
+              for rank in [4, 8, 16, 64, 512]:
+                  for init_scale in [0.001, 0.333, 1.0, 2.0]:
+                      for attack in ['clean', 'backdoor', 'untargeted_poisoning']:
+                          for mechanism in ['none', 'dp_noise', 'sign_quantized']:
+                              rows.append(toy_metrics(rank, init_scale, attack, mechanism, rng))
+              return rows
+
+          def write_csv(rows: Iterable[Row], out_path: str) -> None:
+              os.makedirs(os.path.dirname(out_path), exist_ok=True)
+              with open(out_path, 'w', newline='', encoding='utf-8') as f:
+                  writer = csv.DictWriter(f, fieldnames=list(Row.__dataclass_fields__.keys()))
+                  writer.writeheader()
+                  for row in rows:
+                      writer.writerow(row.__dict__)
+
+          def main() -> None:
+              parser = argparse.ArgumentParser()
+              parser.add_argument('--seed', type=int, default=20260608)
+              parser.add_argument('--out', default='logs/toy_lora_privacy_results.csv')
+              args = parser.parse_args()
+              rows = generate(args.seed)
+              write_csv(rows, args.out)
+              print(f'wrote {len(rows)} rows to {args.out}')
+              print('IMPORTANT: toy workflow only; not BERT/GLUE reproduction.')
+
+          if __name__ == '__main__':
+              main()
+          EOF
+
+          cat > scripts/reviewer_quickstart.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          echo "Reviewer quickstart"
+          echo "==================="
+          python3 reproducibility/toy_lora_privacy_sim.py --seed 20260608 --out logs/toy_lora_privacy_results.csv
+          if command -v lake >/dev/null 2>&1; then
+            lake build
+          else
+            echo "Lake not found. CI installs Lean before running lake build."
+          fi
+          EOF
+          chmod +x scripts/reviewer_quickstart.sh reproducibility/toy_lora_privacy_sim.py
+
+      - name: Install Lean with elan
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o /tmp/elan-init.sh
+          sh /tmp/elan-init.sh -y --default-toolchain leanprover/lean4:v4.12.0
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - name: Show tool versions
+      - name: Run Lean build
+        shell: bash
         run: |
-          python3 --version
-          ~/.elan/bin/lean --version
-          ~/.elan/bin/lake --version
-
-      - name: Run reviewer quickstart
-        run: bash scripts/reviewer_quickstart.sh
-
-      - name: Run Lean build and capture log
-        run: |
+          set -euo pipefail
+          export PATH="$HOME/.elan/bin:$PATH"
           mkdir -p logs
           {
             echo "# Lean build status"
             echo
             date -u +"UTC timestamp: %Y-%m-%dT%H:%M:%SZ"
             echo
-            echo "lean version: $(lean --version)"
             echo "lake version: $(lake --version)"
+            echo "lean version: $(lean --version)"
             echo
             echo "Running lake build..."
             lake build
             echo
-            echo "lake build completed successfully"
+            echo "lake build completed successfully."
           } | tee logs/lean_build_status.md
 
-      - name: Write CI summary
-        if: always()
+      - name: Run deterministic toy reproduction
+        shell: bash
         run: |
-          mkdir -p logs
+          set -euo pipefail
+          python3 reproducibility/toy_lora_privacy_sim.py --seed 20260608 --out logs/toy_lora_privacy_results.csv
+          python3 - <<'PY' | tee logs/toy_result_summary.md
+          import csv
+          from collections import defaultdict
+          path = 'logs/toy_lora_privacy_results.csv'
+          with open(path, newline='', encoding='utf-8') as f:
+              rows = list(csv.DictReader(f))
+          print('# Toy result summary')
+          print()
+          print(f'Rows excluding header: {len(rows)}')
+          assert len(rows) == 180, len(rows)
+          groups = defaultdict(list)
+          for r in rows:
+              if r['attack'] == 'backdoor':
+                  groups[(r['mechanism'], r['rank'])].append(float(r['backdoor_asr']))
+          print()
+          print('| mechanism | rank | mean backdoor_asr |')
+          print('|---|---:|---:|')
+          for key in sorted(groups):
+              vals = groups[key]
+              print(f'| {key[0]} | {key[1]} | {sum(vals)/len(vals):.4f} |')
+          PY
+
+      - name: Run artifact hygiene checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(README.md README_BEGINNER.md WHAT_LEAN_CHECKS.md PROOF_STATUS_TABLE.md CLAIMS_LEDGER.md FORMULA_WALKTHROUGH.md REPRODUCIBILITY_SCORECARD.md ARTIFACT_MANIFEST.md lakefile.lean lean-toolchain LoRARobustness.lean LoRARobustness/FormulaBook.lean LoRARobustness/PrivacyInteractions.lean LoRARobustness/ToyExample.lean reproducibility/toy_lora_privacy_sim.py scripts/reviewer_quickstart.sh logs/toy_lora_privacy_results.csv logs/lean_build_status.md logs/toy_result_summary.md)
+          for f in "${required[@]}"; do test -f "$f" || { echo "missing $f"; exit 1; }; done
+          axiom_count=$(grep -R '^          axiom ' -n LoRARobustness | wc -l | tr -d ' ')
+          opaque_count=$(grep -R '^          opaque ' -n LoRARobustness | wc -l | tr -d ' ')
           {
-            echo "# Artifact CI summary"
+            echo '# Artifact hygiene report'
             echo
             date -u +"UTC timestamp: %Y-%m-%dT%H:%M:%SZ"
             echo
-            echo "## Commands run"
+            echo "Required files: ${#required[@]} present"
+            echo "Axiom declarations: $axiom_count"
+            echo "Opaque declarations: $opaque_count"
+            echo
+            echo 'The axiom and opaque counts are intentionally visible so reviewers do not confuse this artifact with a completed proof of all scientific claims.'
+          } | tee logs/artifact_hygiene_report.md
+
+      - name: Write CI summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          {
+            echo '# CI summary'
+            echo
+            date -u +"UTC timestamp: %Y-%m-%dT%H:%M:%SZ"
+            echo
+            echo '## Commands executed'
             echo
             echo '```bash'
-            echo 'bash scripts/reviewer_quickstart.sh'
             echo 'lake build'
+            echo 'python3 reproducibility/toy_lora_privacy_sim.py --seed 20260608 --out logs/toy_lora_privacy_results.csv'
             echo '```'
             echo
-            echo "## Generated outputs"
+            echo '## Outputs'
             echo
-            if [ -f logs/toy_lora_privacy_results.csv ]; then
-              echo "- logs/toy_lora_privacy_results.csv: $(wc -l < logs/toy_lora_privacy_results.csv) lines including header"
-              echo
-              echo "First five lines:"
-              echo '```csv'
-              head -n 5 logs/toy_lora_privacy_results.csv
-              echo '```'
-            else
-              echo "- toy results CSV missing"
-            fi
+            wc -l logs/toy_lora_privacy_results.csv || true
             echo
-            if [ -f logs/lean_build_status.md ]; then
-              echo "- logs/lean_build_status.md generated"
-            fi
+            echo 'First five toy rows:'
+            echo '```csv'
+            head -n 5 logs/toy_lora_privacy_results.csv || true
+            echo '```'
           } > logs/ci_summary.md
 
-      - name: Commit generated result logs back to main
+      - name: Commit generated artifact and results back to main
         if: github.event_name != 'pull_request'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 'ci: update generated artifact results [skip ci]'
-          file_pattern: 'logs/*.csv logs/*.md'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md README_BEGINNER.md WHAT_LEAN_CHECKS.md PROOF_STATUS_TABLE.md CLAIMS_LEDGER.md FORMULA_WALKTHROUGH.md REPRODUCIBILITY_SCORECARD.md ARTIFACT_MANIFEST.md lean-toolchain lakefile.lean LoRARobustness.lean LoRARobustness reproducibility scripts logs
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "ci: update self-contained artifact results [skip ci]"
+            git push
+          fi
