@@ -23,10 +23,22 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Lean and Lake
+        run: |
+          set -euo pipefail
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Show tool versions
+        run: |
+          python3 --version
+          ~/.elan/bin/lean --version
+          ~/.elan/bin/lake --version
+
       - name: Run reviewer quickstart
         run: bash scripts/reviewer_quickstart.sh
 
-      - name: Capture Lean Lake availability
+      - name: Run Lean build and capture log
         run: |
           mkdir -p logs
           {
@@ -34,15 +46,13 @@ jobs:
             echo
             date -u +"UTC timestamp: %Y-%m-%dT%H:%M:%SZ"
             echo
-            if command -v lake >/dev/null 2>&1; then
-              echo "lake found: $(lake --version || true)"
-              echo
-              echo "Running lake build..."
-              lake build
-            else
-              echo "lake not found on this runner. The current workflow verifies reviewer scripts and toy reproducibility only."
-              echo "Use the Dockerfile or install Lean with elan to run lake build."
-            fi
+            echo "lean version: $(lean --version)"
+            echo "lake version: $(lake --version)"
+            echo
+            echo "Running lake build..."
+            lake build
+            echo
+            echo "lake build completed successfully"
           } | tee logs/lean_build_status.md
 
       - name: Write CI summary
@@ -58,7 +68,7 @@ jobs:
             echo
             echo '```bash'
             echo 'bash scripts/reviewer_quickstart.sh'
-            echo 'lake build  # only if lake is available'
+            echo 'lake build'
             echo '```'
             echo
             echo "## Generated outputs"
