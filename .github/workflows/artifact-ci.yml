@@ -1,0 +1,87 @@
+name: Artifact CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reviewer-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run reviewer quickstart
+        run: bash scripts/reviewer_quickstart.sh
+
+      - name: Capture Lean Lake availability
+        run: |
+          mkdir -p logs
+          {
+            echo "# Lean build status"
+            echo
+            date -u +"UTC timestamp: %Y-%m-%dT%H:%M:%SZ"
+            echo
+            if command -v lake >/dev/null 2>&1; then
+              echo "lake found: $(lake --version || true)"
+              echo
+              echo "Running lake build..."
+              lake build
+            else
+              echo "lake not found on this runner. The current workflow verifies reviewer scripts and toy reproducibility only."
+              echo "Use the Dockerfile or install Lean with elan to run lake build."
+            fi
+          } | tee logs/lean_build_status.md
+
+      - name: Write CI summary
+        if: always()
+        run: |
+          mkdir -p logs
+          {
+            echo "# Artifact CI summary"
+            echo
+            date -u +"UTC timestamp: %Y-%m-%dT%H:%M:%SZ"
+            echo
+            echo "## Commands run"
+            echo
+            echo '```bash'
+            echo 'bash scripts/reviewer_quickstart.sh'
+            echo 'lake build  # only if lake is available'
+            echo '```'
+            echo
+            echo "## Generated outputs"
+            echo
+            if [ -f logs/toy_lora_privacy_results.csv ]; then
+              echo "- logs/toy_lora_privacy_results.csv: $(wc -l < logs/toy_lora_privacy_results.csv) lines including header"
+              echo
+              echo "First five lines:"
+              echo '```csv'
+              head -n 5 logs/toy_lora_privacy_results.csv
+              echo '```'
+            else
+              echo "- toy results CSV missing"
+            fi
+            echo
+            if [ -f logs/lean_build_status.md ]; then
+              echo "- logs/lean_build_status.md generated"
+            fi
+          } > logs/ci_summary.md
+
+      - name: Commit generated result logs back to main
+        if: github.event_name != 'pull_request'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'ci: update generated artifact results [skip ci]'
+          file_pattern: 'logs/*.csv logs/*.md'
