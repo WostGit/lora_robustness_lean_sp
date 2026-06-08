@@ -2,7 +2,8 @@
 set -euo pipefail
 
 echo "Reviewer quickstart"
-echo "==================="necho "This script checks packaging hygiene and runs the deterministic toy workflow."
+echo "==================="
+echo "This script checks packaging hygiene and runs the deterministic toy workflow."
 echo
 
 bash scripts/check_artifact.sh
