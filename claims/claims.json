@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "artifact_scope": "Lean specification plus deterministic toy reproducibility workflow; not a full BERT/GLUE or attack reproduction artifact.",
+  "claims": [
+    {
+      "id": "C001",
+      "statement": "LoRA update has form Delta W = B A.",
+      "status": "mechanized_toy_checked",
+      "evidence": [
+        "LoRARobustness/FormulaBook.lean",
+        "LoRARobustness/ToyExample.lean",
+        "FORMULA_WALKTHROUGH.md",
+        "PROOF_STATUS_TABLE.md"
+      ],
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "The general matrix operator is specified abstractly; only the small concrete toy instance is proved by computation."
+    },
+    {
+      "id": "C002",
+      "statement": "Training-time robustness can be represented as expected clean-vs-perturbed parameter-update difference.",
+      "status": "specification_only",
+      "evidence": [
+        "LoRARobustness/FormulaBook.lean",
+        "FORMULA_WALKTHROUGH.md",
+        "CLAIMS_LEDGER.md"
+      ],
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "Lean checks the symbolic definition, not empirical correctness on a real model."
+    },
+    {
+      "id": "C003",
+      "statement": "NTK/Fisher bridge explains LoRA robustness geometry.",
+      "status": "axiom_open_obligation",
+      "evidence": [
+        "LoRARobustness/FormulaBook.lean",
+        "PROOF_STATUS_TABLE.md",
+        "CLAIMS_LEDGER.md"
+      ],
+      "lean_symbol": "fisher_weighted_ntk_bridge",
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "This is explicitly assumed, not proved. Treat as a paper-level theoretical obligation."
+    },
+    {
+      "id": "C004",
+      "statement": "LoRA/full NTK relationship holds with a residual term.",
+      "status": "axiom_open_obligation",
+      "evidence": [
+        "LoRARobustness/FormulaBook.lean",
+        "PROOF_STATUS_TABLE.md",
+        "FORMULA_WALKTHROUGH.md"
+      ],
+      "lean_symbol": "oold_ntk_relationship",
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "This is a theorem interface encoded as an axiom, not a derivation."
+    },
+    {
+      "id": "C005",
+      "statement": "Gram residual is negative semidefinite under stated rank and variance conditions.",
+      "status": "axiom_open_obligation",
+      "evidence": [
+        "LoRARobustness/FormulaBook.lean",
+        "PROOF_STATUS_TABLE.md"
+      ],
+      "lean_symbol": "theorem_3_4_gramResidual_NSD",
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "The condition is recorded, but the proof is not mechanized."
+    },
+    {
+      "id": "C006",
+      "statement": "LoRA may improve backdoor robustness.",
+      "status": "external_not_reproduced",
+      "evidence": [
+        "CLAIMS_LEDGER.md",
+        "REPRODUCIBILITY_SCORECARD.md"
+      ],
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "No real backdoor experiment is reproduced in this repository."
+    },
+    {
+      "id": "C007",
+      "statement": "LoRA may worsen untargeted poisoning robustness.",
+      "status": "external_not_reproduced",
+      "evidence": [
+        "CLAIMS_LEDGER.md",
+        "REPRODUCIBILITY_SCORECARD.md"
+      ],
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "No real untargeted poisoning experiment is reproduced in this repository."
+    },
+    {
+      "id": "C008",
+      "statement": "DP or sign-quantized privacy mechanisms may interact with LoRA robustness.",
+      "status": "hypothesis_only",
+      "evidence": [
+        "LoRARobustness/PrivacyInteractions.lean",
+        "CLAIMS_LEDGER.md",
+        "REPRODUCIBILITY_SCORECARD.md"
+      ],
+      "verifier": "scripts/verify_claims.py",
+      "reviewer_warning": "This is a structured hypothesis map, not experimental validation."
+    },
+    {
+      "id": "C009",
+      "statement": "Toy LoRA/privacy results regenerate deterministically.",
+      "status": "executable_toy_evidence",
+      "evidence": [
+        "reproducibility/toy_lora_privacy_sim.py",
+        "scripts/reviewer_quickstart.sh",
+        "logs/toy_lora_privacy_results.csv"
+      ],
+      "verifier": "scripts/verify_claims.py",
+      "expected_rows": 180,
+      "reviewer_warning": "Toy reproducibility is useful engineering evidence, but it is not paper-level empirical reproduction."
+    }
+  ]
+}
